@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frog Jump Adventure</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+        body {
+            font-family: 'Press Start 2P', cursive;
+            background-color: #1a202c; /* Tailwind gray-900 */
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden; /* Prevent scrolling on mobile when playing */
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            aspect-ratio: 1 / 1;
+            background-color: #4299e1; /* Tailwind blue-500 for water */
+            border: 4px solid #2d3748; /* Tailwind gray-800 */
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            border-radius: 8px;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.7);
+            z-index: 10;
+        }
+
+        #ui-layer.hidden {
+            display: none;
+        }
+
+        .btn {
+            background-color: #48bb78; /* Tailwind green-500 */
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-family: 'Press Start 2P', cursive;
+            font-size: 1rem;
+            cursor: pointer;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            transition: transform 0.1s, background-color 0.2s;
+            margin-top: 20px;
+        }
+
+        .btn:hover {
+            background-color: #38a169; /* Tailwind green-600 */
+            transform: translateY(-2px);
+        }
+
+        .btn:active {
+            transform: translateY(2px);
+        }
+
+        #stats-bar {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            max-width: 600px;
+            padding: 10px;
+            background-color: #2d3748;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+            font-size: 0.8rem;
+        }
+
+        #controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .control-btn {
+            background-color: #718096;
+            width: 60px;
+            height: 60px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 50%;
+            font-size: 1.5rem;
+            user-select: none;
+        }
+        
+        /* Utility classes for text colors */
+        .text-green { color: #48bb78; }
+        .text-red { color: #f56565; }
+        .text-yellow { color: #ecc94b; }
+
+        #creator-credit {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            font-size: 0.5rem;
+            color: rgba(255, 255, 255, 0.5);
+            font-family: sans-serif;
+            pointer-events: none;
+        }
+
+    </style>
+</head>
+<body>
+
+    <h1 class="text-2xl md:text-3xl text-green mb-4 text-center">FROG JUMP<br>ADVENTURE</h1>
+
+    <div id="stats-bar">
+        <div>LEVEL: <span id="level-display" class="text-yellow">1</span></div>
+        <div>SCORE: <span id="score-display">0</span></div>
+        <div>LIVES: <span id="lives-display" class="text-red">3</span></div>
+    </div>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="ui-layer">
+            <h2 id="main-message" class="text-xl md:text-2xl text-center mb-4 leading-relaxed">Ready to Jump?</h2>
+            <p id="sub-message" class="text-sm text-center mb-6 max-w-[80%]">Use Arrow Keys or Swipe to move. Reach the top lily pads!</p>
+            <button id="start-btn" class="btn">START GAME</button>
+        </div>
+        
+        <div id="creator-credit">Created by Buster Lime 5</div>
+    </div>
+
+    <!-- On-screen controls for mobile/touch -->
+    <div id="controls" class="md:hidden">
+        <button class="btn control-btn" id="btn-left">◀</button>
+        <div class="flex flex-col gap-2">
+            <button class="btn control-btn" id="btn-up">▲</button>
+            <button class="btn control-btn" id="btn-down">▼</button>
+        </div>
+        <button class="btn control-btn" id="btn-right">▶</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const uiLayer = document.getElementById('ui-layer');
+        const startBtn = document.getElementById('start-btn');
+        const mainMessage = document.getElementById('main-message');
+        const subMessage = document.getElementById('sub-message');
+        
+        const scoreDisplay = document.getElementById('score-display');
+        const levelDisplay = document.getElementById('level-display');
+        const livesDisplay = document.getElementById('lives-display');
+
+        // Game Configuration
+        const GRID_SIZE = 10; // 10x10 grid
+        let CELL_SIZE; // Calculated based on canvas size
+        let canvasSize;
+
+        // Game State
+        let gameState = 'START'; // START, PLAYING, GAME_OVER, LEVEL_CLEAR
+        let score = 0;
+        let level = 1;
+        let lives = 3;
+        let animationId;
+        
+        // Entities
+        let frog;
+        let obstacles = [];
+        let logs = [];
+        let lilyPads = [];
+        let waterRows = [1, 2, 3, 4]; // Rows counting from top (0 is finish line)
+        let roadRows = [5, 6, 7, 8];
+        let safeRows = [9]; // Start row
+
+        // Colors
+        const COLORS = {
+            frog: '#48bb78', // Default green
+            frogGold: '#ffd700', // Level 3+
+            frogPurple: '#8a2be2', // Level 6+
+            frogRed: '#ff4500', // Level 10+
+            water: '#4299e1',
+            road: '#4a5568',
+            safeZone: '#718096',
+            car1: '#f56565',
+            car2: '#ed8936',
+            truck: '#ecc94b',
+            log: '#9c4221',
+            lilyPad: '#68d391',
+            lilyPadOccupied: '#276749'
+        };
+
+        class Frog {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.gridX = Math.floor(GRID_SIZE / 2);
+                this.gridY = GRID_SIZE - 1;
+                this.width = CELL_SIZE * 0.8;
+                this.height = CELL_SIZE * 0.8;
+                this.isDead = false;
+                this.isOnLog = false;
+                this.logSpeed = 0;
+                this.highestRow = this.gridY;
+            }
+
+            draw() {
+                if (this.isDead) return;
+
+                let currentFrogColor = COLORS.frog;
+                if (level >= 10) {
+                    currentFrogColor = COLORS.frogRed;
+                } else if (level >= 6) {
+                    currentFrogColor = COLORS.frogPurple;
+                } else if (level >= 3) {
+                    currentFrogColor = COLORS.frogGold;
+                }
+
+                const x = this.gridX * CELL_SIZE + CELL_SIZE / 2;
+                const y = this.gridY * CELL_SIZE + CELL_SIZE / 2;
+
+                ctx.fillStyle = currentFrogColor;
+                ctx.beginPath();
+                // Body
+                ctx.arc(x, y, this.width / 2, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Eyes
+                ctx.fillStyle = 'white';
+                ctx.beginPath();
+                ctx.arc(x - this.width/4, y - this.height/4, this.width/6, 0, Math.PI * 2);
+                ctx.arc(x + this.width/4, y - this.height/4, this.width/6, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = 'black';
+                ctx.beginPath();
+                ctx.arc(x - this.width/4, y - this.height/4, this.width/12, 0, Math.PI * 2);
+                ctx.arc(x + this.width/4, y - this.height/4, this.width/12, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            move(dx, dy) {
+                if (this.isDead || gameState !== 'PLAYING') return;
+
+                const newX = this.gridX + dx;
+                const newY = this.gridY + dy;
+
+                if (newX >= 0 && newX < GRID_SIZE && newY >= 0 && newY < GRID_SIZE) {
+                    this.gridX = newX;
+                    this.gridY = newY;
+                    
+                    // Score for moving forward
+                    if (this.gridY < this.highestRow) {
+                        score += 10;
+                        this.highestRow = this.gridY;
+                        updateStats();
+                    }
+                }
+            }
+
+            update() {
+                if (this.isDead) return;
+
+                // Move with log if on one
+                if (this.isOnLog) {
+                    // Update physical position based on log speed, then map back to grid conceptually
+                    // For grid-based movement, it's easier to snap or drift. Let's drift.
+                    // We need a fractional X for smooth log riding if we want, but grid is simpler.
+                    // Let's implement strict grid snapping for simplicity in this version, 
+                    // or continuous movement. Let's stick to grid-based mostly.
+                    
+                    // Actually, for frogger, logs move continuously, frog moves on grid.
+                    // Let's refine log riding.
+                }
+
+                // Check bounds if carried by log
+                if (this.gridX < 0 || this.gridX >= GRID_SIZE) {
+                    die("Carried off screen!");
+                }
+            }
+        }
+
+        class Obstacle {
+            constructor(row, type, speed, direction, startX) {
+                this.gridY = row;
+                this.type = type;
+                this.speed = speed * direction;
+                
+                // For smooth movement, use absolute X coordinates
+                this.x = startX; 
+                this.y = this.gridY * CELL_SIZE;
+                
+                this.height = CELL_SIZE * 0.8;
+                
+                if (type === 'car1' || type === 'car2') {
+                    this.width = CELL_SIZE * 0.9;
+                    this.color = type === 'car1' ? COLORS.car1 : COLORS.car2;
+                } else if (type === 'truck') {
+                    this.width = CELL_SIZE * 1.8;
+                    this.color = COLORS.truck;
+                }
+            }
+
+            update() {
+                this.x += this.speed;
+                // Wrap around
+                if (this.speed > 0 && this.x > canvasSize) {
+                    this.x = -this.width;
+                } else if (this.speed < 0 && this.x + this.width < 0) {
+                    this.x = canvasSize;
+                }
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                // Center vertically in row
+                const yOffset = (CELL_SIZE - this.height) / 2;
+                ctx.fillRect(this.x, this.y + yOffset, this.width, this.height);
+                
+                // Add some detail
+                ctx.fillStyle = 'rgba(255,255,255,0.3)';
+                if (this.speed > 0) {
+                    ctx.fillRect(this.x + this.width - 5, this.y + yOffset, 5, this.height); // Headlight right
+                } else {
+                    ctx.fillRect(this.x, this.y + yOffset, 5, this.height); // Headlight left
+                }
+            }
+        }
+
+        class Log {
+            constructor(row, size, speed, direction, startX) {
+                this.gridY = row;
+                this.speed = speed * direction;
+                this.size = size; // length in grid cells
+                this.x = startX;
+                this.y = this.gridY * CELL_SIZE;
+                this.height = CELL_SIZE * 0.8;
+                this.width = this.size * CELL_SIZE;
+            }
+
+            update() {
+                this.x += this.speed;
+                if (this.speed > 0 && this.x > canvasSize) {
+                    this.x = -this.width;
+                } else if (this.speed < 0 && this.x + this.width < 0) {
+                    this.x = canvasSize;
+                }
+            }
+
+            draw() {
+                ctx.fillStyle = COLORS.log;
+                const yOffset = (CELL_SIZE - this.height) / 2;
+                
+                // Rounded log ends
+                ctx.beginPath();
+                ctx.roundRect(this.x, this.y + yOffset, this.width, this.height, 10);
+                ctx.fill();
+                
+                // Log details
+                ctx.strokeStyle = '#742a15';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(this.x + 10, this.y + yOffset + this.height/3);
+                ctx.lineTo(this.x + this.width - 10, this.y + yOffset + this.height/3);
+                ctx.stroke();
+            }
+        }
+
+        class LilyPad {
+            constructor(gridX) {
+                this.gridX = gridX;
+                this.gridY = 0;
+                this.isOccupied = false;
+            }
+
+            draw() {
+                const x = this.gridX * CELL_SIZE + CELL_SIZE / 2;
+                const y = this.gridY * CELL_SIZE + CELL_SIZE / 2;
+                const radius = CELL_SIZE * 0.4;
+
+                ctx.fillStyle = this.isOccupied ? COLORS.lilyPadOccupied : COLORS.lilyPad;
+                ctx.beginPath();
+                ctx.arc(x, y, radius, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Cutout to look like lily pad
+                ctx.fillStyle = COLORS.safeZone; // Background color for top row
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.arc(x, y, radius + 1, Math.PI * 1.5, Math.PI * 1.8);
+                ctx.fill();
+
+                if (this.isOccupied) {
+                    let miniFrogColor = COLORS.frog;
+                    if (level >= 10) miniFrogColor = COLORS.frogRed;
+                    else if (level >= 6) miniFrogColor = COLORS.frogPurple;
+                    else if (level >= 3) miniFrogColor = COLORS.frogGold;
+
+                    // Draw a mini frog sitting on it
+                    ctx.fillStyle = miniFrogColor;
+                    ctx.beginPath();
+                    ctx.arc(x, y, radius * 0.6, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+        }
+
+        function resizeCanvas() {
+            const container = document.getElementById('game-container');
+            canvasSize = container.clientWidth;
+            canvas.width = canvasSize;
+            canvas.height = canvasSize;
+            CELL_SIZE = canvasSize / GRID_SIZE;
+            
+            // Re-init positions on resize if needed, though scales mostly handle it
+        }
+
+        function initLevel() {
+            frog = new Frog();
+            obstacles = [];
+            logs = [];
+            
+            if (level === 1) lilyPads = []; // Reset pads on new game
+            
+            // Setup Lily Pads if starting fresh
+            if (lilyPads.length === 0) {
+                for (let i = 1; i < GRID_SIZE; i += 2) {
+                    lilyPads.push(new LilyPad(i));
+                }
+            }
+
+            // Base speed increases with level
+            const baseSpeed = (canvasSize / 200) + (level * 0.2);
+
+            // Row 8 (Road bottom)
+            generateRowObstacles(8, 'car1', baseSpeed * 0.8, -1, 3);
+            // Row 7 (Road)
+            generateRowObstacles(7, 'truck', baseSpeed * 0.6, 1, 2);
+            // Row 6 (Road)
+            generateRowObstacles(6, 'car2', baseSpeed * 1.2, -1, 3);
+            // Row 5 (Road top)
+            generateRowObstacles(5, 'car1', baseSpeed * 0.9, 1, 2);
+
+            // Row 4 (Water bottom)
+            generateRowLogs(4, 3, baseSpeed * 0.7, 1, 3);
+            // Row 3 (Water)
+            generateRowLogs(3, 2, baseSpeed * 1.1, -1, 4);
+            // Row 2 (Water)
+            generateRowLogs(2, 4, baseSpeed * 0.5, 1, 2);
+            // Row 1 (Water top)
+            generateRowLogs(1, 2, baseSpeed * 1.3, -1, 3);
+        }
+
+        function generateRowObstacles(row, type, speed, dir, count) {
+            const spacing = canvasSize / count;
+            for (let i = 0; i < count; i++) {
+                obstacles.push(new Obstacle(row, type, speed, dir, i * spacing));
+            }
+        }
+
+        function generateRowLogs(row, size, speed, dir, count) {
+            const spacing = canvasSize / count;
+            for (let i = 0; i < count; i++) {
+                logs.push(new Log(row, size, speed, dir, i * spacing));
+            }
+        }
+
+        function updateStats() {
+            scoreDisplay.textContent = score;
+            levelDisplay.textContent = level;
+            livesDisplay.textContent = lives;
+        }
+
+        function die(reason = "") {
+            frog.isDead = true;
+            lives--;
+            updateStats();
+            
+            // Optional: flash screen red or create particle effect here
+
+            setTimeout(() => {
+                if (lives > 0) {
+                    frog.reset();
+                } else {
+                    gameOver();
+                }
+            }, 500);
+        }
+
+        function gameOver() {
+            gameState = 'GAME_OVER';
+            mainMessage.textContent = 'GAME OVER';
+            mainMessage.className = 'text-2xl md:text-3xl text-red mb-4 text-center';
+            subMessage.textContent = `Final Score: ${score}`;
+            startBtn.textContent = 'TRY AGAIN';
+            uiLayer.classList.remove('hidden');
+        }
+
+        function checkLevelComplete() {
+            // Check if all pads are occupied
+            if (lilyPads.every(pad => pad.isOccupied)) {
+                gameState = 'LEVEL_CLEAR';
+                score += 1000 * level; // Level completion bonus
+                updateStats();
+                
+                mainMessage.textContent = 'LEVEL CLEAR!';
+                mainMessage.className = 'text-2xl md:text-3xl text-green mb-4 text-center';
+                subMessage.textContent = 'Get ready for the next level.';
+                startBtn.textContent = 'NEXT LEVEL';
+                uiLayer.classList.remove('hidden');
+            } else {
+                // Reset frog for next pad
+                frog.reset();
+            }
+        }
+
+        function checkCollisions() {
+            if (frog.isDead || gameState !== 'PLAYING') return;
+
+            const fRect = {
+                x: frog.gridX * CELL_SIZE + CELL_SIZE * 0.2, // Tighter bounding box
+                y: frog.gridY * CELL_SIZE + CELL_SIZE * 0.2,
+                w: CELL_SIZE * 0.6,
+                h: CELL_SIZE * 0.6
+            };
+
+            // Road collisions
+            if (roadRows.includes(frog.gridY)) {
+                for (let obs of obstacles) {
+                    if (obs.gridY === frog.gridY) {
+                        const oRect = { x: obs.x, y: obs.y, w: obs.width, h: obs.height };
+                        if (rectIntersect(fRect, oRect)) {
+                            die("Hit by vehicle!");
+                            return;
+                        }
+                    }
+                }
+            }
+
+            // Water mechanics
+            if (waterRows.includes(frog.gridY)) {
+                let onLog = false;
+                let logSpeed = 0;
+                
+                for (let log of logs) {
+                    if (log.gridY === frog.gridY) {
+                        const lRect = { x: log.x, y: log.y, w: log.width, h: log.height };
+                        
+                        // Check if frog's center is mostly over the log
+                        const frogCenterX = frog.gridX * CELL_SIZE + CELL_SIZE / 2;
+                        if (frogCenterX >= log.x && frogCenterX <= log.x + log.width) {
+                            onLog = true;
+                            logSpeed = log.speed;
+                            break;
+                        }
+                    }
+                }
+
+                if (!onLog) {
+                    die("Drowned!");
+                    return;
+                } else {
+                    // Move frog conceptually with the log
+                    // Since gridX is integer, we need a float tracker for smooth riding, or just snap
+                    // Let's implement continuous X tracking for the frog when on a log
+                    if (!frog.isOnLog) {
+                        frog.isOnLog = true;
+                        frog.exactX = frog.gridX * CELL_SIZE + CELL_SIZE / 2;
+                    }
+                    
+                    frog.exactX += logSpeed;
+                    frog.gridX = Math.floor(frog.exactX / CELL_SIZE);
+                    
+                    if (frog.exactX < 0 || frog.exactX > canvasSize) {
+                        die("Carried off screen!");
+                    }
+                }
+            } else {
+                frog.isOnLog = false;
+            }
+
+            // Lily Pad collisions (Top row)
+            if (frog.gridY === 0) {
+                let landedOnPad = false;
+                for (let pad of lilyPads) {
+                    if (pad.gridX === frog.gridX) {
+                        if (pad.isOccupied) {
+                            die("Pad already taken!");
+                            return;
+                        } else {
+                            pad.isOccupied = true;
+                            landedOnPad = true;
+                            score += 50; // Pad landed bonus
+                            updateStats();
+                            checkLevelComplete();
+                            return; // Success!
+                        }
+                    }
+                }
+                if (!landedOnPad) {
+                    die("Missed the lily pad!");
+                }
+            }
+        }
+
+        function rectIntersect(r1, r2) {
+            return !(r2.x > r1.x + r1.w || 
+                     r2.x + r2.w < r1.x || 
+                     r2.y > r1.y + r1.h ||
+                     r2.y + r2.h < r1.y);
+        }
+
+        function drawBackground() {
+            // Safe zones (Start and Middle)
+            ctx.fillStyle = COLORS.safeZone;
+            ctx.fillRect(0, 9 * CELL_SIZE, canvasSize, CELL_SIZE);
+            ctx.fillRect(0, 5 * CELL_SIZE, canvasSize, CELL_SIZE); // Middle safe strip
+            ctx.fillRect(0, 0 * CELL_SIZE, canvasSize, CELL_SIZE); // Top strip
+
+            // Road
+            ctx.fillStyle = COLORS.road;
+            ctx.fillRect(0, 5 * CELL_SIZE, canvasSize, 4 * CELL_SIZE);
+
+            // Water
+            ctx.fillStyle = COLORS.water;
+            ctx.fillRect(0, 1 * CELL_SIZE, canvasSize, 4 * CELL_SIZE);
+            
+            // Draw grid lines (optional for debug, keeping faint for style)
+            ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+            ctx.lineWidth = 1;
+            for(let i=0; i<GRID_SIZE; i++) {
+                ctx.beginPath();
+                ctx.moveTo(0, i * CELL_SIZE);
+                ctx.lineTo(canvasSize, i * CELL_SIZE);
+                ctx.stroke();
+                
+                ctx.beginPath();
+                ctx.moveTo(i * CELL_SIZE, 0);
+                ctx.lineTo(i * CELL_SIZE, canvasSize);
+                ctx.stroke();
+            }
+        }
+
+        function gameLoop() {
+            if (gameState === 'PLAYING') {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                drawBackground();
+
+                // Update & Draw Logs
+                logs.forEach(log => {
+                    log.update();
+                    log.draw();
+                });
+
+                // Update & Draw Obstacles
+                obstacles.forEach(obs => {
+                    obs.update();
+                    obs.draw();
+                });
+
+                // Draw Lily Pads
+                lilyPads.forEach(pad => pad.draw());
+
+                frog.update();
+                checkCollisions();
+                frog.draw();
+            }
+
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        function startGame() {
+            if (gameState === 'GAME_OVER') {
+                level = 1;
+                score = 0;
+                lives = 3;
+                lilyPads = []; // Force reset
+            } else if (gameState === 'LEVEL_CLEAR') {
+                level++;
+                lilyPads.forEach(pad => pad.isOccupied = false); // Clear pads for next level
+            }
+            
+            updateStats();
+            initLevel();
+            gameState = 'PLAYING';
+            uiLayer.classList.add('hidden');
+        }
+
+        startBtn.addEventListener('click', startGame);
+
+        // Keyboard controls
+        window.addEventListener('keydown', (e) => {
+            if (gameState !== 'PLAYING' || frog.isDead) return;
+            
+            switch(e.key) {
+                case 'ArrowUp':
+                case 'w':
+                    frog.move(0, -1);
+                    break;
+                case 'ArrowDown':
+                case 's':
+                    frog.move(0, 1);
+                    break;
+                case 'ArrowLeft':
+                case 'a':
+                    frog.move(-1, 0);
+                    break;
+                case 'ArrowRight':
+                case 'd':
+                    frog.move(1, 0);
+                    break;
+            }
+            // Prevent default scrolling
+            if(["Space","ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].indexOf(e.code) > -1) {
+                e.preventDefault();
+            }
+        });
+
+        // Touch / On-screen Controls
+        document.getElementById('btn-up').addEventListener('touchstart', (e) => { e.preventDefault(); frog.move(0, -1); });
+        document.getElementById('btn-down').addEventListener('touchstart', (e) => { e.preventDefault(); frog.move(0, 1); });
+        document.getElementById('btn-left').addEventListener('touchstart', (e) => { e.preventDefault(); frog.move(-1, 0); });
+        document.getElementById('btn-right').addEventListener('touchstart', (e) => { e.preventDefault(); frog.move(1, 0); });
+        
+        // Mouse clicks for on-screen buttons (fallback for desktop testing)
+        document.getElementById('btn-up').addEventListener('click', () => frog.move(0, -1));
+        document.getElementById('btn-down').addEventListener('click', () => frog.move(0, 1));
+        document.getElementById('btn-left').addEventListener('click', () => frog.move(-1, 0));
+        document.getElementById('btn-right').addEventListener('click', () => frog.move(1, 0));
+
+        // Swipe support (basic implementation)
+        let touchStartX = 0;
+        let touchStartY = 0;
+        
+        canvas.addEventListener('touchstart', e => {
+            touchStartX = e.changedTouches[0].screenX;
+            touchStartY = e.changedTouches[0].screenY;
+        }, {passive: false});
+
+        canvas.addEventListener('touchend', e => {
+            if (gameState !== 'PLAYING' || frog.isDead) return;
+            
+            let touchEndX = e.changedTouches[0].screenX;
+            let touchEndY = e.changedTouches[0].screenY;
+            
+            let dx = touchEndX - touchStartX;
+            let dy = touchEndY - touchStartY;
+            
+            // Determine swipe direction
+            if (Math.abs(dx) > Math.abs(dy)) {
+                // Horizontal
+                if (Math.abs(dx) > 30) { // Threshold
+                    if (dx > 0) frog.move(1, 0);
+                    else frog.move(-1, 0);
+                }
+            } else {
+                // Vertical
+                if (Math.abs(dy) > 30) { // Threshold
+                    if (dy > 0) frog.move(0, 1);
+                    else frog.move(0, -1);
+                }
+            }
+            e.preventDefault(); // Prevent scrolling/zooming
+        }, {passive: false});
+
+
+        // Initialization
+        window.addEventListener('resize', resizeCanvas);
+        
+        // Initial setup
+        window.onload = () => {
+            resizeCanvas();
+            updateStats();
+            drawBackground(); // Draw initial static background behind UI
+            gameLoop();       // Start loop, it will wait for gameState === 'PLAYING'
+        };
+
+    </script>
+</body>
+</html>
